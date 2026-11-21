@@ -65,7 +65,8 @@ import com.fasterxml.jackson.databind.*;import com.wanderwise.model.Destination;
 
 	            com.fasterxml.jackson.databind.node.ObjectNode currentData =
 	                    result.putObject("current");
-
+	            
+	            currentData.put("time", current.path("last_updated").asText());
 	            currentData.put("temperature_2m", current.path("temp_c").asDouble());
 	            currentData.put("relative_humidity_2m", current.path("humidity").asInt());
 	            currentData.put("apparent_temperature", current.path("feelslike_c").asDouble());
@@ -74,12 +75,14 @@ import com.fasterxml.jackson.databind.*;import com.wanderwise.model.Destination;
 
 	            com.fasterxml.jackson.databind.node.ObjectNode daily =
 	                    result.putObject("daily");
-
+	            
+	            com.fasterxml.jackson.databind.node.ArrayNode dates = daily.putArray("time");
 	            com.fasterxml.jackson.databind.node.ArrayNode codes = daily.putArray("weather_code");
 	            com.fasterxml.jackson.databind.node.ArrayNode max = daily.putArray("temperature_2m_max");
 	            com.fasterxml.jackson.databind.node.ArrayNode min = daily.putArray("temperature_2m_min");
 
 	            for (JsonNode day : forecast) {
+	            	dates.add(day.path("date").asText());
 	                codes.add(day.path("day").path("condition").path("code").asInt());
 	                max.add(day.path("day").path("maxtemp_c").asDouble());
 	                min.add(day.path("day").path("mintemp_c").asDouble());
