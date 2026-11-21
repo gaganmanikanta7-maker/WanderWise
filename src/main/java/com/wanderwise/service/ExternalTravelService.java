@@ -2,7 +2,22 @@ package com.wanderwise.service;
 import com.fasterxml.jackson.databind.*;import com.wanderwise.model.Destination;import org.springframework.http.*;import org.springframework.stereotype.Service;import org.springframework.web.client.RestClient;import java.net.URLEncoder;import java.nio.charset.StandardCharsets;import java.util.*;
 @Service public class ExternalTravelService {
  private final RestClient http=RestClient.builder().build(); private final ObjectMapper mapper=new ObjectMapper();
-public JsonNode weather (Destination d){
+ private final Map<String, WeatherCacheEntry> weatherCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+private record WeatherCacheEntry(JsonNode data, long expiresAt) {}
+
+public JsonNode weather(Destination d) {
+    String key = d.lat() + "," + d.lon();
+
+    long now = System.currentTimeMillis();
+
+    WeatherCacheEntry cached = weatherCache.get(key);
+
+    // Return cached forecast if it is still fresh
+    if (cached != null && now < cached.expiresAt()) {
+        return cached.data();
+    }
+
     try {
         String url = "https://api.open-meteo.com/v1/forecast?latitude="
                 + d.lat() + "&longitude=" + d.lon()
@@ -15,11 +30,23 @@ public JsonNode weather (Destination d){
                 .retrieve()
                 .body(Map.class);
 
-        return mapper.valueToTree(response);
+        JsonNode data = mapper.valueToTree(response);
+
+        // Cache successful forecast for 6 hours
+        weatherCache.put(key,
+                new WeatherCacheEntry(data, now + 6 * 60 * 60 * 1000));
+
+        return data;
 
     } catch (Exception e) {
+
+        // Use an older cached forecast if the API is unavailable
+        if (cached != null) {
+            return cached.data();
+        }
+
         throw new IllegalStateException(
-                "Weather service has reached its request limit or is temporarily unavailable. Please try again later."
+                "Weather is temporarily unavailable. Please try again later."
         );
     }
 }
