@@ -2,7 +2,27 @@ package com.wanderwise.service;
 import com.fasterxml.jackson.databind.*;import com.wanderwise.model.Destination;import org.springframework.http.*;import org.springframework.stereotype.Service;import org.springframework.web.client.RestClient;import java.net.URLEncoder;import java.nio.charset.StandardCharsets;import java.util.*;
 @Service public class ExternalTravelService {
  private final RestClient http=RestClient.builder().build(); private final ObjectMapper mapper=new ObjectMapper();
- public JsonNode weather(Destination d){String url="https://api.open-meteo.com/v1/forecast?latitude="+d.lat()+"&longitude="+d.lon()+"&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=7";return mapper.valueToTree(http.get().uri(url).retrieve().body(Map.class));}
+public JsonNode weather (Destination d){
+    try {
+        String url = "https://api.open-meteo.com/v1/forecast?latitude="
+                + d.lat() + "&longitude=" + d.lon()
+                + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m"
+                + "&daily=weather_code,temperature_2m_max,temperature_2m_min"
+                + "&timezone=auto&forecast_days=7";
+
+        Map<?, ?> response = http.get()
+                .uri(url)
+                .retrieve()
+                .body(Map.class);
+
+        return mapper.valueToTree(response);
+
+    } catch (Exception e) {
+        throw new IllegalStateException(
+                "Weather service has reached its request limit or is temporarily unavailable. Please try again later."
+        );
+    }
+}
  public List<Map<String,Object>> places(Destination d,String category){String filter=switch(category==null?"all":category.toLowerCase(Locale.ROOT)){
   case "attractions","places" -> "node(around:12000,"+d.lat()+","+d.lon()+")[tourism~\"attraction|museum|viewpoint|gallery|zoo|theme_park\"];way(around:12000,"+d.lat()+","+d.lon()+")[tourism~\"attraction|museum|viewpoint|gallery|zoo|theme_park\"];";
   case "hotels","stays" -> "node(around:12000,"+d.lat()+","+d.lon()+")[tourism~\"hotel|hostel|guest_house|motel|apartment|camp_site\"];way(around:12000,"+d.lat()+","+d.lon()+")[tourism~\"hotel|hostel|guest_house|motel|apartment|camp_site\"];";
