@@ -4,52 +4,106 @@ import com.fasterxml.jackson.databind.*;import com.wanderwise.model.Destination;
  private final RestClient http=RestClient.builder().build(); private final ObjectMapper mapper=new ObjectMapper();
  private final Map<String, WeatherCacheEntry> weatherCache = new java.util.concurrent.ConcurrentHashMap<>();
 
-private record WeatherCacheEntry(JsonNode data, long expiresAt) {}
+ private record WeatherCacheEntry(JsonNode data, long expiresAt) {}
+ 
+ public JsonNode weather(Destination d) {
+	    String key = d.lat() + "," + d.lon();
+	    long now = System.currentTimeMillis();
 
-public JsonNode weather(Destination d) {
-    String key = d.lat() + "," + d.lon();
+	    WeatherCacheEntry cached = weatherCache.get(key);
 
-    long now = System.currentTimeMillis();
+	    if (cached != null && now < cached.expiresAt()) {
+	        return cached.data();
+	    }
 
-    WeatherCacheEntry cached = weatherCache.get(key);
+	   
+	    try {
+	        String url = "https://api.open-meteo.com/v1/forecast?latitude="
+	                + d.lat() + "&longitude=" + d.lon()
+	                + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m"
+	                + "&daily=weather_code,temperature_2m_max,temperature_2m_min"
+	                + "&timezone=auto&forecast_days=7";
 
-    // Return cached forecast if it is still fresh
-    if (cached != null && now < cached.expiresAt()) {
-        return cached.data();
-    }
+	        Map<?, ?> response = http.get()
+	                .uri(url)
+	                .retrieve()
+	                .body(Map.class);
 
-    try {
-        String url = "https://api.open-meteo.com/v1/forecast?latitude="
-                + d.lat() + "&longitude=" + d.lon()
-                + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m"
-                + "&daily=weather_code,temperature_2m_max,temperature_2m_min"
-                + "&timezone=auto&forecast_days=7";
+	        JsonNode data = mapper.valueToTree(response);
 
-        Map<?, ?> response = http.get()
-                .uri(url)
-                .retrieve()
-                .body(Map.class);
+	        weatherCache.put(key,
+	                new WeatherCacheEntry(data, now + 6 * 60 * 60 * 1000));
 
-        JsonNode data = mapper.valueToTree(response);
+	        return data;
 
-        // Cache successful forecast for 6 hours
-        weatherCache.put(key,
-                new WeatherCacheEntry(data, now + 6 * 60 * 60 * 1000));
+	    } catch (Exception primaryError) {
 
-        return data;
+	     
+	        try {
+	            String apiKey = System.getenv("WEATHERAPI_KEY");
 
-    } catch (Exception e) {
+	            if (apiKey == null || apiKey.isBlank()) {
+	                throw new IllegalStateException("WeatherAPI key is missing");
+	            }
 
-        // Use an older cached forecast if the API is unavailable
-        if (cached != null) {
-            return cached.data();
-        }
+	            String backupUrl = "https://api.weatherapi.com/v1/forecast.json?key="
+	                    + apiKey + "&q=" + d.lat() + "," + d.lon()
+	                    + "&days=3&aqi=no&alerts=no";
 
-        throw new IllegalStateException(
-                "Weather is temporarily unavailable. Please try again later."
-        );
-    }
-}
+	            Map<?, ?> response = http.get()
+	                    .uri(backupUrl)
+	                    .retrieve()
+	                    .body(Map.class);
+
+	            JsonNode backup = mapper.valueToTree(response);
+
+	            JsonNode current = backup.path("current");
+	            JsonNode forecast = backup.path("forecast").path("forecastday");
+
+	            com.fasterxml.jackson.databind.node.ObjectNode result =
+	                    mapper.createObjectNode();
+
+	            com.fasterxml.jackson.databind.node.ObjectNode currentData =
+	                    result.putObject("current");
+
+	            currentData.put("temperature_2m", current.path("temp_c").asDouble());
+	            currentData.put("relative_humidity_2m", current.path("humidity").asInt());
+	            currentData.put("apparent_temperature", current.path("feelslike_c").asDouble());
+	            currentData.put("weather_code", current.path("condition").path("code").asInt());
+	            currentData.put("wind_speed_10m", current.path("wind_kph").asDouble());
+
+	            com.fasterxml.jackson.databind.node.ObjectNode daily =
+	                    result.putObject("daily");
+
+	            com.fasterxml.jackson.databind.node.ArrayNode codes = daily.putArray("weather_code");
+	            com.fasterxml.jackson.databind.node.ArrayNode max = daily.putArray("temperature_2m_max");
+	            com.fasterxml.jackson.databind.node.ArrayNode min = daily.putArray("temperature_2m_min");
+
+	            for (JsonNode day : forecast) {
+	                codes.add(day.path("day").path("condition").path("code").asInt());
+	                max.add(day.path("day").path("maxtemp_c").asDouble());
+	                min.add(day.path("day").path("mintemp_c").asDouble());
+	            }
+
+	            JsonNode data = result;
+
+	            weatherCache.put(key,
+	                    new WeatherCacheEntry(data, now + 6 * 60 * 60 * 1000));
+
+	            return data;
+
+	        } catch (Exception backupError) {
+
+	            if (cached != null) {
+	                return cached.data();
+	            }
+
+	            throw new IllegalStateException(
+	                    "Weather is temporarily unavailable. Please try again later."
+	            );
+	        }
+	    }
+	}
  public List<Map<String,Object>> places(Destination d,String category){String filter=switch(category==null?"all":category.toLowerCase(Locale.ROOT)){
   case "attractions","places" -> "node(around:12000,"+d.lat()+","+d.lon()+")[tourism~\"attraction|museum|viewpoint|gallery|zoo|theme_park\"];way(around:12000,"+d.lat()+","+d.lon()+")[tourism~\"attraction|museum|viewpoint|gallery|zoo|theme_park\"];";
   case "hotels","stays" -> "node(around:12000,"+d.lat()+","+d.lon()+")[tourism~\"hotel|hostel|guest_house|motel|apartment|camp_site\"];way(around:12000,"+d.lat()+","+d.lon()+")[tourism~\"hotel|hostel|guest_house|motel|apartment|camp_site\"];";
