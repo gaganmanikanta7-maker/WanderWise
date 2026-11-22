@@ -1,7 +1,10 @@
 package com.wanderwise.service;
 import com.fasterxml.jackson.databind.*;import com.wanderwise.model.Destination;import org.springframework.http.*;import org.springframework.stereotype.Service;import org.springframework.web.client.RestClient;import java.net.URLEncoder;import java.nio.charset.StandardCharsets;import java.util.*;
 @Service public class ExternalTravelService {
- private final RestClient http=RestClient.builder().build(); private final ObjectMapper mapper=new ObjectMapper();
+	private final RestClient http = RestClient.builder()
+		    .defaultHeader("User-Agent", "WanderWise/1.0 (https://github.com/gaganmanikanta7-maker/WanderWise)")
+		    .build();
+private final ObjectMapper mapper=new ObjectMapper();
  private final Map<String, WeatherCacheEntry> weatherCache = new java.util.concurrent.ConcurrentHashMap<>();
 
  private record WeatherCacheEntry(JsonNode data, long expiresAt) {}
