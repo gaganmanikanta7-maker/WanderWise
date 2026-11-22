@@ -117,6 +117,10 @@ import com.fasterxml.jackson.databind.*;import com.wanderwise.model.Destination;
  };
  String q="[out:json][timeout:20];("+filter+");out center tags 60;";
  try{String raw=http.post().uri("https://overpass-api.de/api/interpreter").contentType(MediaType.APPLICATION_FORM_URLENCODED).body("data="+URLEncoder.encode(q,StandardCharsets.UTF_8)).retrieve().body(String.class);JsonNode root=mapper.readTree(raw);List<Map<String,Object>> out=new ArrayList<>();for(JsonNode e:root.path("elements")){JsonNode t=e.path("tags");String name=t.path("name").asText("");if(name.isBlank())continue;double lat=e.path("lat").asDouble(e.path("center").path("lat").asDouble());double lon=e.path("lon").asDouble(e.path("center").path("lon").asDouble());Map<String,Object> m=new LinkedHashMap<>();m.put("name",name);m.put("type",first(t,"tourism","amenity","shop","public_transport","railway","highway"));m.put("address",String.join(", ",List.of(t.path("addr:street").asText(""),t.path("addr:city").asText(""),t.path("addr:state").asText("")).stream().filter(s->!s.isBlank()).toList()));m.put("lat",lat);m.put("lon",lon);m.put("website",t.path("website").asText(""));m.put("phone",t.path("phone").asText(""));m.put("mapUrl","https://www.openstreetmap.org/?mlat="+lat+"&mlon="+lon+"#map=17/"+lat+"/"+lon);out.add(m);}return out;
- }catch(Exception ex){throw new IllegalStateException("Nearby place data is temporarily unavailable. Please try again in a moment.");}}
+ }catch(Exception ex) {
+	    ex.printStackTrace();
+	    throw new IllegalStateException( "Nearby place data is temporarily unavailable. Please try again in a moment.");
+	}
+ }
  private String first(JsonNode n,String...keys){for(String k:keys){String v=n.path(k).asText("");if(!v.isBlank())return v;}return "Local place";}
 }
